@@ -263,6 +263,8 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
    double fX = 1e+15;
    double fX1 = 1e+15;
    double fXprev = 1e+15;
+   double subgrad = 1e+15;
+   double full_subgrad = 1e+15;
    double sigma = 0.001;
 
    int error_occur = 0;
@@ -340,7 +342,8 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
       double trgradgD = 0.0; // maintain trgradG during coordinate descent
       double normD = 0.0;
       double diffD = 0.0;
-      double subgrad = 1e+15;
+      subgrad = 1e+15;
+      full_subgrad = 1e+15;
       smat_t D(p);
       if (NewtonIter == 1 && IsDiag(X)) {
          if (msg >= 1) {
@@ -362,6 +365,7 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
 
          long numActive = 0;
          subgrad = 0.0;
+         full_subgrad = 0.0;
 
          vector<long> buffercolidx(p);
          // Store Sij, Xij, Wij on free set
@@ -453,6 +457,8 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
                      else
                         g = fabs(g) - lambda;
                      subgrad += fabs(g);
+                     full_subgrad += fabs(g);
+                     full_subgrad += (i != j) * fabs(g);
                   }
                }
                D.col_idx.resize(row_nnz + D.nnz);
@@ -477,6 +483,7 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
             Rcout << "Newton iteration " << NewtonIter << "." << endl;
             Rcout << "  Active set size = " << numActive << "." << endl;
             Rcout << "  sub-gradient = " << subgrad << ", l1-norm of X = " << l1normX << "." << endl;
+            Rcout << "  full sub-gradient = " << full_subgrad << "." << endl;
          }
 
          // For random permutation
@@ -873,6 +880,13 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
          break;
       }
 
+      if (full_subgrad * lambda < l1normX * tol)
+      {
+         NewtonIter--;
+         //if (fabs((fX - fXprev) / fX) < EPS) NewtonIter=99999;
+         break;
+      }
+
       // Line Search!
 
       double alpha = 1.0;
@@ -967,8 +981,8 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
       objlist.push_back(fX);
 
       // Check for convergence.
-      if (subgrad * alpha >= l1normX * tol && (fabs((fX - fXprev) / fX) >= EPS))
-         continue;
+      //if (subgrad * alpha >= l1normX * tol && (fabs((fX - fXprev) / fX) >= EPS))
+      //   continue;
       //		if (mode =='P') {
       //			if (opt != NULL)
       //				opt[pathIdx] = fX;
@@ -1002,8 +1016,17 @@ void QUIC(int p, int n, double* samples, double lambda, double tol, int msg, int
       //			continue;
       //		}
 
-      break;
+      //break;
+      continue;
    }
+
+   #ifdef _OPENMP
+      Rcout << "Iter " << NewtonIter << ":  obj = " << fX << "  time = " << timelist.back() << endl;
+      Rcout << "GLASSO_ITER" << NewtonIter << "GLASSO_ITER" << "GLASSO_TIME" << timelist.back() << "GLASSO_TIME" << endl;
+   #else
+      Rcout << "Iter " << NewtonIter << ":  obj = " << fX << "  time = " << "None, time was measured by OMP which is not available on your system" << endl;
+      Rcout << "GLASSO_ITER" << NewtonIter << "GLASSO_ITER" << "GLASSO_TIME" << 0 << "GLASSO_TIME" << endl;
+   #endif
 
    smat_t X_sym;
    X_sym.symmetricfrom(X);
